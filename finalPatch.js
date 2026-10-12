@@ -1,0 +1,10 @@
+﻿const fs = require('fs');
+let c = fs.readFileSync('src/screens/LookingScreen.tsx', 'utf8');
+const search = '      const res = await fetch(endpoint, {\r\n        method: \\'POST\\',\r\n        headers: { \\'Content-Type\\': \\'application/json\\' },\r\n        body: JSON.stringify(payload)\r\n      });';
+const rep = '      let reqBody: any = null;\r\n      let reqHeaders: any = {};\r\n      if (bannerImage) {\r\n        const formD = new FormData();\r\n        Object.keys(payload).forEach(key => {\r\n          if (typeof (payload as any)[key] === \\'object\\') {\r\n            formD.append(key, JSON.stringify((payload as any)[key]));\r\n          } else {\r\n            formD.append(key, String((payload as any)[key]));\r\n          }\r\n        });\r\n        formD.append(\\'banner_image\\', { uri: bannerImage, name: \\'looking_logo.jpg\\', type: \\'image/jpeg\\' } as any);\r\n        reqBody = formD;\r\n      } else {\r\n        reqBody = JSON.stringify(payload);\r\n        reqHeaders = { \\'Content-Type\\': \\'application/json\\' };\r\n      }\r\n      const res = await fetch(endpoint, {\r\n        method: \\'POST\\',\r\n        headers: bannerImage ? undefined : reqHeaders,\r\n        body: reqBody\r\n      });';
+c = c.replace(search, rep);
+const search2 = search.replace(/\\r\\n/g, '\\n');
+const rep2 = rep.replace(/\\r\\n/g, '\\n');
+c = c.replace(search2, rep2);
+fs.writeFileSync('src/screens/LookingScreen.tsx', c, 'utf8');
+console.log('Fixed');
