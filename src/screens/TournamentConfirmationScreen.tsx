@@ -10,7 +10,7 @@ import WizardProgressIndicator from '../components/WizardProgressIndicator';
 
 const TournamentConfirmationScreen = ({ route, navigation }: any) => {
   const { finalTournament } = route.params;
-  const { setDraftTournament, addTournament, updateTournament, userProfile, currentUserId, addMultipleChats } = useContext(AppContext);
+  const { setDraftTournament, addTournament, updateTournament, userProfile, currentUserId, addMultipleChats, fetchTournaments } = useContext(AppContext);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -54,7 +54,8 @@ const TournamentConfirmationScreen = ({ route, navigation }: any) => {
       appendIfPresent('time', finalTournament.time);
       appendIfPresent('match_date', finalTournament.matchDate);
       appendIfPresent('status', finalTournament.status);
-      appendIfPresent('user_id', userProfile?.id || currentUserId);
+      const uid = (userProfile?.id || currentUserId || '1').toString().replace('user_', '');
+      formData.append('user_id', uid);
       
       appendIfPresent('selected_flyers', finalTournament.selectedFlyers);
       appendIfPresent('stages', finalTournament.stages);
@@ -111,13 +112,16 @@ const TournamentConfirmationScreen = ({ route, navigation }: any) => {
           Alert.alert('Success', 'Tournament created successfully!');
         }
         setDraftTournament(null);
-        navigation.navigate('MainTabs');
+        if (fetchTournaments) {
+          fetchTournaments();
+        }
+        navigation.navigate('MainTabs', { screen: 'Matches', params: { initialTab: 'Tournaments' } });
       } else {
         throw new Error(data?.message || 'API request failed');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving tournament:', error);
-      Alert.alert('Error', 'An error occurred while saving the tournament.');
+      Alert.alert('Error', error?.message || 'An error occurred while saving the tournament.');
     } finally {
       setIsSubmitting(false);
     }

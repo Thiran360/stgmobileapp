@@ -1,15 +1,35 @@
-﻿import React, { useState, useContext } from 'react';
+﻿import React, { useState, useContext, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, Image, StatusBar, TextInput, Modal, ScrollView, Alert, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { AppContext } from '../context/AppContext';
+import { apiService } from '../api/index';
 
 const InboxScreen = () => {
   const navigation = useNavigation<any>();
 
-  const { chats, addMultipleChats } = useContext(AppContext);
+  const { chats, addMultipleChats, userProfile, currentUserId } = useContext(AppContext);
   const [activeTab, setActiveTab] = useState<string>('Chats');
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const fetchInboxData = async () => {
+    try {
+      const uid = (userProfile?.id || currentUserId || '1').toString().replace('user_', '');
+      const inboxData = await apiService.getInbox(uid);
+      if (inboxData && Array.isArray(inboxData)) {
+        addMultipleChats(inboxData);
+      }
+    } catch (e) {
+      console.log('Error refreshing inbox:', e);
+    }
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchInboxData();
+    }, [currentUserId, userProfile?.id])
+  );
   const [customLists, setCustomLists] = useState<string[]>([]);
   const [isCustomizeVisible, setCustomizeVisible] = useState(false);
   const [newListName, setNewListName] = useState('');
@@ -219,6 +239,12 @@ const InboxScreen = () => {
         renderItem={renderChatItem}
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
+        refreshing={isRefreshing}
+        onRefresh={async () => {
+          setIsRefreshing(true);
+          await fetchInboxData();
+          setIsRefreshing(false);
+        }}
       />
 
       {/* Create Group / New Message Modal */}

@@ -2,7 +2,7 @@
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, FlatList, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { colors } from '../theme/colors';
 import { apiService } from '../api/index';
 import { AppContext } from '../context/AppContext';
@@ -16,33 +16,40 @@ const CommunityListScreen = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showOnlyMine, setShowOnlyMine] = useState(false);
   const { userProfile, currentUserId } = useContext(AppContext);
-  useEffect(() => {
-    const fetchPosts = async () => {
-      try {
-        const apiPosts = await apiService.getCommunityPosts(category);
-        const dataList = Array.isArray(apiPosts) ? apiPosts : (apiPosts?.data || []);
-        if (dataList && Array.isArray(dataList)) {
-          const mappedList = dataList.map((item: any) => ({
-            ...item,
-            postedBy: item.postedBy || item.posted_by,
-            orgName: item.orgName || item.org_name,
-            ownerName: item.ownerName || item.owner_name,
-            previousWork: item.previousWork || item.previous_work,
-            overallPlayers: item.overallPlayers || item.overall_players,
-            ownerYoutube: item.ownerYoutube || item.owner_youtube,
-            ownerInstagram: item.ownerInstagram || item.owner_instagram,
-            ownerDiscord: item.ownerDiscord || item.owner_discord,
-            ownerWebsite: item.ownerWebsite || item.owner_website,
-          }));
-          const matched = mappedList.filter((p: any) => p.category === category || p.type === category);
-          setPosts(matched);
-        }
-      } catch(e) {
-        console.log('Failed to fetch community posts', e);
+  const fetchPosts = React.useCallback(async () => {
+    try {
+      const apiPosts = await apiService.getCommunityPosts(category);
+      const dataList = Array.isArray(apiPosts) ? apiPosts : (apiPosts?.data || []);
+      if (dataList && Array.isArray(dataList)) {
+        const mappedList = dataList.map((item: any) => ({
+          ...item,
+          postedBy: item.postedBy || item.posted_by,
+          orgName: item.orgName || item.org_name,
+          ownerName: item.ownerName || item.owner_name,
+          previousWork: item.previousWork || item.previous_work,
+          overallPlayers: item.overallPlayers || item.overall_players,
+          ownerYoutube: item.ownerYoutube || item.owner_youtube,
+          ownerInstagram: item.ownerInstagram || item.owner_instagram,
+          ownerDiscord: item.ownerDiscord || item.owner_discord,
+          ownerWebsite: item.ownerWebsite || item.owner_website,
+        }));
+        const matched = mappedList.filter((p: any) => p.category === category || p.type === category);
+        setPosts(matched);
       }
-    };
+    } catch(e) {
+      console.log('Failed to fetch community posts', e);
+    }
+  }, [category]);
+
+  useEffect(() => {
     fetchPosts();
-  }, [category, route.params]);
+  }, [fetchPosts, route.params]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchPosts();
+    }, [fetchPosts])
+  );
 
     const filteredPosts = posts.filter(post => {
     if (showOnlyMine && post.postedBy !== userProfile?.username && post.user_id !== (userProfile?.id || currentUserId)) return false;

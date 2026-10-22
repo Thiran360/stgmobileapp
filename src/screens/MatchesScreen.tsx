@@ -9,10 +9,10 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import { colors } from '../theme/colors';
 import { AppContext } from '../context/AppContext';
 
-  const MatchesScreen = ({ navigation }: any) => {
+  const MatchesScreen = ({ navigation, route }: any) => {
     const insets = useSafeAreaInsets();
     const { userProfile, currentUserId, globalTournaments, fetchTournaments, registeredMatches, fetchMyMatches, addTournament, addMatch } = useContext(AppContext);
-    const [activeTab, setActiveTab] = useState<'Matches' | 'Tournaments'>('Matches');
+    const [activeTab, setActiveTab] = useState<'Matches' | 'Tournaments'>(route?.params?.initialTab || 'Tournaments');
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isTournamentModalVisible, setIsTournamentModalVisible] = useState(false);
   const [myTournaments, setMyTournaments] = useState<any[]>([]);
@@ -42,19 +42,26 @@ import { AppContext } from '../context/AppContext';
   const [regStarts, setRegStarts] = useState('');
   const [regEnds, setRegEnds] = useState('');
 
+  const updateMyTournaments = useCallback(() => {
+    const cleanUid = String(userProfile?.id || currentUserId || '').replace('user_', '');
+    const userTournaments = globalTournaments.filter(t => {
+      const tUid = String(t.user_id || '').replace('user_', '');
+      return !!cleanUid && tUid === cleanUid;
+    });
+    setMyTournaments(userTournaments.length > 0 ? userTournaments : globalTournaments);
+  }, [globalTournaments, userProfile?.id, currentUserId]);
+
   useFocusEffect(
     useCallback(() => {
       fetchTournaments();
       fetchMyMatches();
-      const uid = userProfile?.id || currentUserId;
-      setMyTournaments(globalTournaments.filter(t => String(t.user_id) === String(uid)));
-    }, [])
+      updateMyTournaments();
+    }, [fetchTournaments, fetchMyMatches, updateMyTournaments])
   );
 
   React.useEffect(() => {
-    const uid = userProfile?.id || currentUserId;
-    setMyTournaments(globalTournaments.filter(t => String(t.user_id) === String(uid)));
-  }, [globalTournaments]);
+    updateMyTournaments();
+  }, [globalTournaments, updateMyTournaments]);
 
   const handleEditTournament = (item: any) => {
     const mapped = {

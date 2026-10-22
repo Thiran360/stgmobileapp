@@ -8,6 +8,7 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import { colors } from '../theme/colors';
 import { AppContext } from '../context/AppContext';
 import { apiService } from '../api/index';
+import { MEDIA_URL } from '../api/config';
 
 const HomeScreen = ({ route, navigation }: any) => {
   const userName = route?.params?.userName || 'Guest';
@@ -124,7 +125,7 @@ const HomeScreen = ({ route, navigation }: any) => {
                 <ImageBackground 
                   source={
                     typeof slide.image === 'string' 
-                      ? { uri: slide.image.startsWith('http') ? slide.image : `https://impromptu-system-driller.ngrok-free.dev/media/${slide.image}` } 
+                      ? { uri: slide.image.startsWith('http') ? slide.image : `${MEDIA_URL}${slide.image}` } 
                       : slide.image
                   } 
                   style={{ flex: 1 }} 

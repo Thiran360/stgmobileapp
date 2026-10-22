@@ -1,4 +1,4 @@
-﻿import React, { createContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiService } from '../api/index';
 
@@ -189,7 +189,12 @@ export const AppContextProvider = ({ children }: { children: ReactNode }) => {
   const [chats, setChats] = useState<ChatItem[]>([]);
 
   const addMultipleChats = (newChats: ChatItem[]) => {
-    setChats(prev => [...newChats, ...prev]);
+    setChats(prev => {
+      const map = new Map<string, ChatItem>();
+      newChats.forEach(c => { if (c && c.id) map.set(c.id, c); });
+      prev.forEach(c => { if (c && c.id && !map.has(c.id)) map.set(c.id, c); });
+      return Array.from(map.values());
+    });
   };
 
   const toggleFavoriteChat = (id: string) => {
@@ -325,13 +330,14 @@ export const AppContextProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const fetchGlobalData = async () => {
+  const fetchGlobalData = async (uid?: string | null) => {
     try {
       const homeData = await apiService.getHomeData().catch(() => null);
       const flyersData = await apiService.getFlyers().catch(() => null);
       if (flyersData && Array.isArray(flyersData)) setFlyers(flyersData);
       
-      const inboxData = await apiService.getInbox().catch(() => null);
+      const targetUid = uid || currentUserId || '1';
+      const inboxData = await apiService.getInbox(targetUid).catch(() => null);
       if (inboxData && Array.isArray(inboxData)) setChats(inboxData);
     } catch (e) {
       console.log('Error fetching global API data:', e);
@@ -340,9 +346,11 @@ export const AppContextProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     const loadInitialData = async () => {
+      let activeUid: string | null = null;
       try {
         const storedUserId = await AsyncStorage.getItem('userId');
         if (storedUserId) {
+          activeUid = storedUserId;
           setCurrentUserId(storedUserId);
           await fetchUserProfile(storedUserId);
         }
@@ -350,7 +358,7 @@ export const AppContextProvider = ({ children }: { children: ReactNode }) => {
         console.error('Failed to load profile', e);
       }
       await fetchTournaments();
-      await fetchGlobalData();
+      await fetchGlobalData(activeUid);
       setIsAppLoading(false);
     };
     loadInitialData();

@@ -1,5 +1,5 @@
 ﻿import React, { useState, useContext } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Image, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Image, Platform, ActivityIndicator, Alert } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
@@ -80,11 +80,15 @@ const CommunityAddScreen = () => {
       f.append('owner_website', ownerWebsite || '');
       
       if (logo) {
-        f.append('logo', {
-          uri: logo,
-          name: 'community_logo_' + Date.now() + '.jpg',
-          type: 'image/jpeg',
-        } as any);
+        if (logo.startsWith('file://') || logo.startsWith('content://')) {
+          f.append('logo', {
+            uri: logo,
+            name: 'community_logo_' + Date.now() + '.jpg',
+            type: 'image/jpeg',
+          } as any);
+        } else {
+          f.append('logo', logo);
+        }
       } else {
         f.append('logo', '');
       }
@@ -113,9 +117,11 @@ const CommunityAddScreen = () => {
         });
       } else {
         console.log('Error from backend:', data);
+        Alert.alert('Error', data?.message || 'Failed to submit post');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.log('Error posting to community:', error);
+      Alert.alert('Error', error?.message || 'Network error occurred');
     }
     setIsSubmitting(false);
   };

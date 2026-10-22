@@ -1,4 +1,4 @@
-﻿import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -12,6 +12,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
 import ImagePicker from 'react-native-image-crop-picker';
 import {
@@ -20,7 +21,7 @@ import {
 } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { AppContext } from '../context/AppContext';
 import { useContext } from 'react';
 const LookingScreen = () => {
@@ -190,14 +191,16 @@ const LookingScreen = () => {
           achievements: formData.achievements || '',
         };
       }
+      const uid = (userProfile?.id || currentUserId || '1').toString().replace('user_', '');
+      const postCategory = activeChip === 'All' ? 'Players' : activeChip;
       const payload: any = {
         creator_username: userProfile?.username || 'Unknown',
-        category: activeChip,
-        user_id: userProfile?.id || currentUserId,
+        category: postCategory,
+        user_id: uid,
         ...mappedData,
       };
       let endpoint = require('../api/config').API_ENDPOINTS.LOOKING_POST;
-      if (currentPost && currentPost.id) {
+      if (isEditingPost && currentPost && currentPost.id) {
         endpoint = require('../api/config').API_ENDPOINTS.LOOKING_UPDATE;
         payload.post_id = currentPost.id;
       }
@@ -209,37 +212,53 @@ const LookingScreen = () => {
           typeof val === 'object' ? JSON.stringify(val) : String(val),
         );
       });
-      if (
-        bannerImage &&
-        (activeChip === 'Team' || activeChip === 'Organisation')
-      ) {
-        f.append('banner_image', {
-          uri: bannerImage,
-          name: 'logo_' + Date.now() + '.jpg',
-          type: 'image/jpeg',
-        } as any);
+      if (bannerImage) {
+        if (
+          bannerImage.startsWith('file://') ||
+          bannerImage.startsWith('content://')
+        ) {
+          f.append('banner_image', {
+            uri: bannerImage,
+            name: (activeChip === 'Players' ? 'player_' : 'logo_') + Date.now() + '.jpg',
+            type: 'image/jpeg',
+          } as any);
+        } else {
+          f.append('banner_image', bannerImage);
+        }
       }
       // Set creator_avatar to empty string as requested for these types
       if (activeChip === 'Team' || activeChip === 'Organisation') {
         f.append('creator_avatar', '');
       } else if (userProfile?.profilePicture) {
-        f.append('creator_avatar', {
-          uri: userProfile.profilePicture,
-          name: 'avatar_' + Date.now() + '.jpg',
-          type: 'image/jpeg',
-        } as any);
+        if (
+          userProfile.profilePicture.startsWith('file://') ||
+          userProfile.profilePicture.startsWith('content://')
+        ) {
+          f.append('creator_avatar', {
+            uri: userProfile.profilePicture,
+            name: 'avatar_' + Date.now() + '.jpg',
+            type: 'image/jpeg',
+          } as any);
+        } else {
+          f.append('creator_avatar', userProfile.profilePicture);
+        }
       }
       const res = await fetch(endpoint, { method: 'POST', body: f });
-      const data = await res.json();
-      if (data?.status !== false) {
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.status !== false) {
+        const wasEditing = isEditingPost;
         setIsEditingPost(false);
         setPostModalVisible(false);
         setFormData({});
         setBannerImage(null);
+        Alert.alert('Success', wasEditing ? 'Post updated successfully!' : 'Post created successfully!');
         fetchLookingData();
+      } else {
+        Alert.alert('Error', data?.message || 'Failed to submit post. Please try again.');
       }
-    } catch (e) {
+    } catch (e: any) {
       console.log('Error posting looking request:', e);
+      Alert.alert('Error', e?.message || 'Network error occurred while submitting post');
     }
     setIsSubmitting(false);
   };
@@ -300,6 +319,12 @@ const LookingScreen = () => {
   useEffect(() => {
     fetchLookingData();
   }, [activeChip]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchLookingData();
+    }, [activeChip])
+  );
   return (
     <View style={{ flex: 1, backgroundColor: '#F3F4F6' }}>
       
@@ -398,7 +423,7 @@ const LookingScreen = () => {
         <View style={styles.cardsContainer}>
           
           {cards
-            .filter(c => activeChip === 'All' || c.category === activeChip)
+            .filter(c => activeChip === 'All' || (c.category && c.category.toLowerCase() === activeChip.toLowerCase()))
             .map((card, index) => (
               <View key={card.id} style={styles.card}>
                 
@@ -426,7 +451,7 @@ const LookingScreen = () => {
                     <View style={styles.cardTitleRow}>
                       
                       <Text style={styles.cardTitle} numberOfLines={1}>
-                        {card.name || card.creator_username}
+                        {card.player_name || card.team_name || card.org_name || card.name || card.creator_username}
                       </Text>
                       {card.category !== 'Team' && card.matchType && (
                         <View style={styles.matchTypeBadge}>
@@ -452,12 +477,7 @@ const LookingScreen = () => {
                     )}
                     {card.category !== 'Team' && (
                       <Text style={styles.cardSubtitle}>
-                        
-                        {card.lookingText}
-                        <Text style={styles.cardSubtitleBold}>
-                          {card.lookingHighlight}
-                        </Text>
-                        {card.lookingFor}
+                        {card.looking_for_text || card.description || card.role || card.lookingText || ''}
                       </Text>
                     )}
                   </View>
@@ -889,7 +909,7 @@ const LookingScreen = () => {
               style={{ flex: 1, backgroundColor: '#F3F4F6' }}
             >
               
-              <KeyboardAwareScrollView enableOnAndroid={true} extraScrollHeight={20} keyboardShouldPersistTaps="handled"
+              <KeyboardAwareScrollView enableOnAndroid={true} extraScrollHeight={20}
                 contentContainerStyle={{ padding: 15, paddingBottom: 100 }}
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
@@ -1599,9 +1619,9 @@ const LookingScreen = () => {
                   )}
                   {/* Post Button */}
                   <TouchableOpacity
-                    style={[styles.modalSubmitBtn, (isSubmitting || (!!currentPost && !isEditingPost)) && { opacity: 0.5 }]}
+                    style={[styles.modalSubmitBtn, isSubmitting && { opacity: 0.5 }]}
                     onPress={handlePostRequest}
-                    disabled={isSubmitting || (!!currentPost && !isEditingPost)}
+                    disabled={isSubmitting}
                   >
                     
                     <Icon

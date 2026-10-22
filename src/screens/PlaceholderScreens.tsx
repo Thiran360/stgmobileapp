@@ -1,24 +1,24 @@
-﻿import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ImageBackground } from 'react-native';
+import React from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ImageBackground, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { colors } from '../theme/colors';
 
 export const LookingScreen = () => (
   <View style={styles.container}>
-    <Text style={styles.text}>Ã°Å¸â€Â Looking Screen Placeholder</Text>
+    <Text style={styles.text}>ðŸ” Looking Screen Placeholder</Text>
   </View>
 );
 
 export const MatchesScreen = () => (
   <View style={styles.container}>
-    <Text style={styles.text}>Ã°Å¸Ââ€  Matches Screen Placeholder</Text>
+    <Text style={styles.text}>ðŸ† Matches Screen Placeholder</Text>
   </View>
 );
 
 export const CommunityScreen = () => (
   <View style={styles.container}>
-    <Text style={styles.text}>Ã°Å¸â€˜Â¥ Community Screen Placeholder</Text>
+    <Text style={styles.text}>ðŸ‘¥ Community Screen Placeholder</Text>
   </View>
 );
 
@@ -50,12 +50,12 @@ export const BlockedScreen = () => (
 
 export const StoreScreen = () => {
   const dummyProducts = [
-    { id: '1', name: 'BGMI Official T-Shirt', price: '₹499', image: 'https://m.media-amazon.com/images/I/51BqjU91UeL._AC_UY1100_.jpg' },
-    { id: '2', name: 'Gaming Finger Sleeves', price: '₹149', image: 'https://m.media-amazon.com/images/I/61I20rE3-sL.jpg' },
-    { id: '3', name: 'Mobile Gaming Triggers', price: '₹299', image: 'https://m.media-amazon.com/images/I/61k8wIqFmEL.jpg' },
-    { id: '4', name: 'BGMI Logo Cap', price: '₹349', image: 'https://m.media-amazon.com/images/I/51r5rU8Bv6L._AC_UY1100_.jpg' },
-    { id: '5', name: 'PUBG/BGMI Keychain', price: '₹99', image: 'https://m.media-amazon.com/images/I/51h1d85J4+L._AC_UY1100_.jpg' },
-    { id: '6', name: 'Gaming Earbuds', price: '₹1299', image: 'https://m.media-amazon.com/images/I/61j3VLuQB+L.jpg' },
+    { id: '1', name: 'BGMI Official T-Shirt', price: '?499', image: 'https://m.media-amazon.com/images/I/51BqjU91UeL._AC_UY1100_.jpg' },
+    { id: '2', name: 'Gaming Finger Sleeves', price: '?149', image: 'https://m.media-amazon.com/images/I/61I20rE3-sL.jpg' },
+    { id: '3', name: 'Mobile Gaming Triggers', price: '?299', image: 'https://m.media-amazon.com/images/I/61k8wIqFmEL.jpg' },
+    { id: '4', name: 'BGMI Logo Cap', price: '?349', image: 'https://m.media-amazon.com/images/I/51r5rU8Bv6L._AC_UY1100_.jpg' },
+    { id: '5', name: 'PUBG/BGMI Keychain', price: '?99', image: 'https://m.media-amazon.com/images/I/51h1d85J4+L._AC_UY1100_.jpg' },
+    { id: '6', name: 'Gaming Earbuds', price: '?1299', image: 'https://m.media-amazon.com/images/I/61j3VLuQB+L.jpg' },
   ];
 
   return (

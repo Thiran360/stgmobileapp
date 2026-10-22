@@ -1,4 +1,4 @@
-﻿import React, { useState, useContext, useRef, useEffect } from 'react';
+import React, { useState, useContext, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, FlatList, KeyboardAvoidingView, Platform, Image, StatusBar, Modal, Alert, ScrollView, Switch, PermissionsAndroid } from 'react-native';
 import AudioRecorderPlayer from 'react-native-audio-recorder-player';
 import RNFS from 'react-native-fs';
@@ -196,7 +196,7 @@ const ChatScreen = () => {
   useEffect(() => {
     const fetchChatData = async () => {
       try {
-        const msgs = await apiService.getChatMessages(userId);
+        const msgs = await apiService.getChatMessages(userId, userProfile?.id || currentUserId || '1');
         if (msgs && Array.isArray(msgs)) setMessages(msgs);
         
         if (isGroup) {
@@ -231,7 +231,7 @@ const ChatScreen = () => {
     if (message.trim().length > 0) {
       const text = message;
       setMessage('');
-      setMessages(prev => [...prev, { id: Date.now().toString(), text: text, sender: 'me', time: 'Now' }]);
+      setMessages(prev => [...prev, { id: Date.now().toString(), text: text, sender: 'me', is_me: true, time: 'Now' }]);
       try {
         await apiService.sendMessage(userId, text, userProfile?.id || currentUserId || 'unknown');
       } catch (err) {}
@@ -286,7 +286,12 @@ const ChatScreen = () => {
   };
 
   const renderMessage = ({ item }: any) => {
-    const isMe = item.sender === 'me';
+    const myId = String(userProfile?.id || currentUserId || '').replace('user_', '');
+    const msgSenderId = String(item.sender_id || '').replace('user_', '');
+    const isMe = item.sender === 'me' || 
+                 item.is_me === true || 
+                 (!!myId && !!msgSenderId && myId === msgSenderId) ||
+                 (item.sender && String(item.sender).toLowerCase() === 'me');
     
     if (item.type === 'voice') {
       const isPlaying = playingId === item.id;
@@ -500,7 +505,7 @@ const ChatScreen = () => {
               
               {isGroup ? (
                 <>
-                  <Text style={{ fontSize: 16, color: '#6B7280', marginBottom: 10 }}>Group ï¿½ {groupMembers.length} members</Text>
+                  <Text style={{ fontSize: 16, color: '#6B7280', marginBottom: 10 }}>Group � {groupMembers.length} members</Text>
                   <Text style={{ fontSize: 16, color: '#111827', textAlign: 'center', paddingHorizontal: 20, marginBottom: 25 }}>
                     {groupDescription}
                   </Text>
@@ -903,7 +908,7 @@ const ChatScreen = () => {
             <Text style={{ fontSize: 16, fontWeight: '600', color: '#111827', marginRight: 10 }}>To:</Text>
             <TextInput 
               style={{ flex: 1, fontSize: 16, color: '#111827', padding: 0 }}
-              placeholder="Search globally..." placeholderTextColor="#9CA3AF"
+              placeholder="Search globally..."
               placeholderTextColor="#9CA3AF"
               value={memberSearchQuery}
               onChangeText={setMemberSearchQuery}
@@ -961,7 +966,7 @@ const ChatScreen = () => {
             <Text style={{ fontSize: 16, fontWeight: '600', color: '#111827', marginRight: 10 }}>To:</Text>
             <TextInput 
               style={{ flex: 1, fontSize: 16, color: '#111827', padding: 0 }}
-              placeholder="Search globally..." placeholderTextColor="#9CA3AF"
+              placeholder="Search globally..."
               placeholderTextColor="#9CA3AF"
               value={memberSearchQuery}
               onChangeText={setMemberSearchQuery}
