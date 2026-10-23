@@ -1,5 +1,7 @@
-﻿import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Linking } from 'react-native';
+﻿import React, { useContext } from 'react';
+import { AppContext } from '../context/AppContext';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Linking, Alert } from 'react-native';
+import { apiService } from '../api/index';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -9,8 +11,52 @@ const CommunityPostDetailsScreen = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const { post, category } = route.params;
+  const { userProfile, currentUserId } = useContext(AppContext);
 
-    const openLink = (url: string) => {
+  const isOwner = () => {
+    if (!post) return false;
+    const pUid = post.user_id ? String(post.user_id).replace('user_', '').trim() : '';
+    const myUid = (userProfile?.id || currentUserId || '').toString().replace('user_', '').trim();
+    if (pUid && myUid && pUid === myUid) return true;
+
+    const pUser = (post.postedBy || post.posted_by || '').toString().toLowerCase().replace('@', '').trim();
+    const myUser = (userProfile?.username || '').toString().toLowerCase().replace('@', '').trim();
+    const myName = (userProfile?.fullName || '').toString().toLowerCase().trim();
+    if (pUser && (pUser === myUser || pUser === myName)) return true;
+
+    return false;
+  };
+
+  const isMyPost = isOwner();
+
+  const handleDelete = () => {
+    Alert.alert(
+      'Delete Post',
+      'Are you sure you want to delete your post? Once deleted, you can create a fresh post in this category.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const res = await apiService.deleteCommunityPost(post.id);
+              if (res?.status !== false) {
+                Alert.alert('Deleted', 'Post deleted successfully.');
+                navigation.goBack();
+              } else {
+                Alert.alert('Error', res?.message || 'Failed to delete post.');
+              }
+            } catch (e: any) {
+              Alert.alert('Error', e?.message || 'Network error');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const openLink = (url: string) => {
     if (!url) return;
     const formattedUrl = url.startsWith('http') ? url : `https://${url}`;
     Linking.openURL(formattedUrl).catch(err => console.log('Error opening link:', err));
@@ -160,10 +206,30 @@ const CommunityPostDetailsScreen = () => {
       </ScrollView>
 
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.contactBtn} onPress={handleContact}>
-          <Icon name="chatbubble-ellipses" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
-          <Text style={styles.contactBtnText}>Chat with {post.name}</Text>
-        </TouchableOpacity>
+        {isMyPost ? (
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <TouchableOpacity 
+              style={[styles.contactBtn, { backgroundColor: '#E51025', flex: 1 }]} 
+              onPress={() => navigation.navigate('CommunityAddScreen', { category, isEdit: true, post })}
+            >
+              <Icon name="pencil" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
+              <Text style={styles.contactBtnText}>Edit Post</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.contactBtn, { backgroundColor: '#4B5563', flex: 1 }]} 
+              onPress={handleDelete}
+            >
+              <Icon name="trash-outline" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
+              <Text style={styles.contactBtnText}>Delete</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity style={styles.contactBtn} onPress={handleContact}>
+            <Icon name="chatbubble-ellipses" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+            <Text style={styles.contactBtnText}>Chat with {post.name}</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </SafeAreaView>
   );

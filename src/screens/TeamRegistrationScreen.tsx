@@ -1,12 +1,17 @@
-﻿import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, Alert, Modal, StatusBar, ScrollView, Linking } from 'react-native';
+import React, { useState, useEffect, useMemo, useContext } from 'react';
+import {
+  View, Text, StyleSheet, TextInput, TouchableOpacity,
+  Image, Alert, Modal, StatusBar, ScrollView, Linking,
+  ActivityIndicator
+} from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
-import ImagePicker from 'react-native-image-crop-picker';
+import ImagePicker from '../utils/SafeImagePicker';
 import { colors } from '../theme/colors';
 import { AppContext } from '../context/AppContext';
 import { TournamentCalendarView } from '../components/TournamentCalendarView';
+import { apiService } from '../api/index';
 
 interface Player {
   id: string;
@@ -16,8 +21,9 @@ interface Player {
 
 const TeamRegistrationScreen = ({ navigation, route }: any) => {
   const { tournamentId, tournamentName } = route?.params || {};
-  const { registerTeam, globalTournaments, teamRegistrations } = React.useContext(AppContext);
+  const { registerTeam, globalTournaments, teamRegistrations, userProfile, currentUserId } = useContext(AppContext);
   const tournament = globalTournaments.find(t => t.id === tournamentId);
+
   const [teamName, setTeamName] = useState('');
   const [teamBanner, setTeamBanner] = useState<string | null>(null);
   const [players, setPlayers] = useState<Player[]>([
@@ -29,14 +35,86 @@ const TeamRegistrationScreen = ({ navigation, route }: any) => {
     { id: '6', gameId: '', gameName: '' }
   ]);
   const [hasJoinedGroup, setHasJoinedGroup] = useState(false);
+  const [selectedSlot, setSelectedSlot] = useState<string>('');
+  const [apiTeams, setApiTeams] = useState<any[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const isFormValid = React.useMemo(() => {
+  const cleanTid = String(tournamentId || '').replace('tourney_', '');
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchRegistered = async () => {
+      try {
+        const teams = await apiService.getRegisteredTeams(cleanTid || tournamentId);
+        if (isMounted && Array.isArray(teams)) {
+          setApiTeams(teams);
+        }
+      } catch (err) {
+        console.log('Error fetching registered teams', err);
+      }
+    };
+    if (cleanTid || tournamentId) {
+      fetchRegistered();
+    }
+    return () => { isMounted = false; };
+  }, [cleanTid, tournamentId]);
+
+  const existingTournamentTeams = useMemo(() => {
+    const combined: any[] = [];
+    const seen = new Set<string>();
+
+    (apiTeams || []).forEach(t => {
+      const idKey = String(t.id || t.teamName);
+      if (!seen.has(idKey)) {
+        seen.add(idKey);
+        combined.push(t);
+      }
+    });
+
+    (teamRegistrations || []).filter(t => String(t.tournamentId || '').replace('tourney_', '') === cleanTid).forEach(t => {
+      const idKey = String(t.id || t.teamName);
+      if (!seen.has(idKey)) {
+        seen.add(idKey);
+        combined.push(t);
+      }
+    });
+
+    return combined;
+  }, [apiTeams, teamRegistrations, cleanTid]);
+
+  const tAny = tournament as any;
+  const totalSlots = parseInt(tAny?.totalSlots || tAny?.total_slots || tAny?.teamsLimit || tAny?.teams_limit || '25', 10) || 25;
+
+  const bookedSlotsMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    existingTournamentTeams.forEach(t => {
+      const s = String(t.slot || '').replace(/[^0-9]/g, '');
+      if (s) {
+        map[s] = t.teamName || 'Booked';
+      }
+    });
+    return map;
+  }, [existingTournamentTeams]);
+
+  // Pre-select first available slot
+  useEffect(() => {
+    if (!selectedSlot || bookedSlotsMap[selectedSlot]) {
+      for (let i = 1; i <= totalSlots; i++) {
+        const sStr = i.toString();
+        if (!bookedSlotsMap[sStr]) {
+          setSelectedSlot(sStr);
+          break;
+        }
+      }
+    }
+  }, [bookedSlotsMap, totalSlots, selectedSlot]);
+
+  const isFormValid = useMemo(() => {
     if (!teamName.trim()) return false;
     const requiredPlayers = players.slice(0, 4);
     const emptyRequiredPlayer = requiredPlayers.find(p => !p.gameId.trim() || !p.gameName.trim());
     return !emptyRequiredPlayer;
   }, [teamName, players]);
-
 
   const handleImagePick = async () => {
     try {
@@ -62,41 +140,71 @@ const TeamRegistrationScreen = ({ navigation, route }: any) => {
     setPlayers(players.map(p => p.id === id ? { ...p, [field]: value } : p));
   };
 
-  const existingTournamentTeams = React.useMemo(() => {
-    return teamRegistrations.filter(t => t.tournamentId === tournamentId);
-  }, [teamRegistrations, tournamentId]);
-
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!teamName.trim()) {
       Alert.alert('Error', 'Please enter a TEAM NAME.');
       return;
     }
-    const requiredPlayers = players.slice(0, 4); // First 4 players usually required in BGMI
+    const requiredPlayers = players.slice(0, 4);
     const emptyRequiredPlayer = requiredPlayers.find(p => !p.gameId.trim() || !p.gameName.trim());
     if (emptyRequiredPlayer) {
       Alert.alert('Error', 'Please fill in IN GAME ID and IN GAME NAME for the first 4 players.');
       return;
     }
-    
-    // Process registration logic here
-    let nextSlotNum = 1;
-    while (existingTournamentTeams.some(t => t.slot === nextSlotNum.toString())) {
-      nextSlotNum++;
+
+    let slotToBook = selectedSlot;
+    if (!slotToBook) {
+      // Find first free slot
+      for (let i = 1; i <= totalSlots; i++) {
+        if (!bookedSlotsMap[i.toString()]) {
+          slotToBook = i.toString();
+          break;
+        }
+      }
+    }
+    if (!slotToBook) {
+      slotToBook = (existingTournamentTeams.length + 1).toString();
     }
 
-    registerTeam({
-      id: Date.now().toString(),
-      tournamentId,
-      teamName,
-      teamBanner,
-      slot: nextSlotNum.toString(),
-      players: players.filter(p => p.gameId.trim() && p.gameName.trim())
-    });
+    setIsSubmitting(true);
+    try {
+      const currentUid = (userProfile?.id || currentUserId || '1').toString().replace('user_', '');
+      await registerTeam({
+        id: Date.now().toString(),
+        tournamentId: tournamentId,
+        teamName: teamName.trim(),
+        teamBanner,
+        slot: slotToBook,
+        map: 'Erangel',
+        players: players.filter(p => p.gameId.trim() && p.gameName.trim()),
+        user_id: currentUid,
+        userId: currentUid,
+        tournament: tournament
+      });
 
-    Alert.alert('Success', 'Team registered successfully!', [
-      { text: 'OK', onPress: () => navigation.goBack() }
-    ]);
+      setIsSubmitting(false);
+      Alert.alert(
+        'Registration Confirmed!',
+        `Your team "${teamName}" is registered in Slot #${slotToBook} for ${tournamentName || 'this tournament'}!`,
+        [
+          {
+            text: 'View My Matches',
+            onPress: () => {
+              navigation.navigate('MainTabs', {
+                screen: 'Matches',
+                params: { initialTab: 'Matches' }
+              });
+            }
+          }
+        ]
+      );
+    } catch (e: any) {
+      setIsSubmitting(false);
+      Alert.alert('Registration Failed', e?.message || 'Something went wrong while booking the slot.');
+    }
   };
+
+  const configuredGroups = Math.max(1, parseInt(tournament?.numberOfGroups || '1', 10) || 1);
 
   return (
     <View style={{ flex: 1, backgroundColor: '#F3F4F6' }}>
@@ -106,21 +214,29 @@ const TeamRegistrationScreen = ({ navigation, route }: any) => {
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Icon name="arrow-back" size={24} color="#FFFFFF" />
           </TouchableOpacity>
-          <Text style={styles.title}>Register Team</Text>
+          <Text style={styles.title}>Register Team & Slot</Text>
         </View>
       </SafeAreaView>
 
-      <KeyboardAwareScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 50, paddingHorizontal: 20, paddingTop: 20 }} enableOnAndroid={true} extraScrollHeight={20} showsVerticalScrollIndicator={false}>
-        
+      <KeyboardAwareScrollView
+        style={styles.container}
+        contentContainerStyle={{ paddingBottom: 60, paddingHorizontal: 20, paddingTop: 16 }}
+        enableOnAndroid={true}
+        extraScrollHeight={20}
+        showsVerticalScrollIndicator={false}
+      >
         {tournamentName && (
           <View style={styles.tournamentInfoCard}>
-             <Icon name="trophy-outline" size={20} color={colors.primary} style={{ marginRight: 10 }} />
-             <Text style={styles.tournamentNameText}>{tournamentName}</Text>
+            <Icon name="trophy-outline" size={22} color={colors.primary} style={{ marginRight: 10 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.tournamentNameText}>{tournamentName}</Text>
+              <Text style={styles.tournamentSubText}>Select your slot & register team line-up</Text>
+            </View>
           </View>
         )}
 
         {tournament && (tournament.matchDatesObj || tournament.regStartDate) && (
-          <View style={[styles.sectionCard, { marginTop: 15 }]}>
+          <View style={[styles.sectionCard, { marginTop: 5 }]}>
             <Text style={styles.sectionHeaderTitle}>Tournament Schedule</Text>
             <TournamentCalendarView 
               matchDatesObj={tournament.matchDatesObj}
@@ -130,6 +246,7 @@ const TeamRegistrationScreen = ({ navigation, route }: any) => {
           </View>
         )}
 
+        {/* TEAM IDENTITY SECTION */}
         <View style={styles.sectionCard}>
           <Text style={styles.sectionHeaderTitle}>Team Identity</Text>
           {/* Banner Image */}
@@ -154,7 +271,7 @@ const TeamRegistrationScreen = ({ navigation, route }: any) => {
               <Icon name="shield-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
               <TextInput 
                 style={styles.input} 
-                placeholder="Enter your team name" 
+                placeholder="Enter your team name (e.g. Team Phoenix)" 
                 placeholderTextColor="#9CA3AF" 
                 value={teamName} 
                 onChangeText={setTeamName} 
@@ -163,23 +280,24 @@ const TeamRegistrationScreen = ({ navigation, route }: any) => {
           </View>
         </View>
 
-        {/* Players List */}
+        {/* PLAYERS ROSTER SECTION */}
         <View style={styles.playersSectionHeader}>
           <Text style={styles.sectionHeaderTitle}>Roster Details</Text>
+          <Text style={styles.sectionSubTitle}>First 4 players are required</Text>
         </View>
 
         {players.map((player, index) => (
           <View key={player.id} style={styles.playerCard}>
             <View style={styles.playerCardHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <View style={styles.playerNumberBadge}>
+                <View style={[styles.playerNumberBadge, index < 4 ? { backgroundColor: colors.primary } : { backgroundColor: '#9CA3AF' }]}>
                   <Text style={styles.playerNumberText}>{index + 1}</Text>
                 </View>
-                <Text style={styles.playerIndex}>Player {index + 1}</Text>
+                <Text style={styles.playerIndex}>Player {index + 1} {index < 4 ? '(Main)' : '(Sub)'}</Text>
               </View>
             </View>
             <View style={styles.playerInputsRow}>
-              <View style={[styles.inputGroup, { flex: 1, marginRight: 12, marginBottom: 0 }]}>
+              <View style={[styles.inputGroup, { flex: 1, marginRight: 10, marginBottom: 0 }]}>
                 <Text style={styles.label}>IN GAME ID {index < 4 && <Text style={{color: '#E51025'}}>*</Text>}</Text>
                 <View style={styles.inputContainer}>
                   <TextInput 
@@ -208,18 +326,19 @@ const TeamRegistrationScreen = ({ navigation, route }: any) => {
           </View>
         ))}
 
+        {/* TOURNAMENT GROUPS */}
         <View style={styles.groupsContainer}>
-          <Text style={styles.sectionHeaderTitle}>Select Group to Join</Text>
-          {Array.from({ length: parseInt(tournament?.numberOfGroups || '1', 10) }).map((_, idx) => {
+          <Text style={styles.sectionHeaderTitle}>Tournament Groups</Text>
+          {Array.from({ length: configuredGroups }).map((_, idx) => {
             const groupNum = idx + 1;
-            const teamsPerGrp = parseInt(tournament?.teamsPerGroup || '20', 10);
+            const teamsPerGrp = parseInt(tournament?.teamsPerGroup || '25', 10) || 25;
             const totalJoined = existingTournamentTeams.length;
             
             const currentGroupJoined = Math.min(Math.max(totalJoined - (idx * teamsPerGrp), 0), teamsPerGrp);
             const isFull = currentGroupJoined >= teamsPerGrp;
             
             const firstAvailableGroupIdx = Math.floor(totalJoined / teamsPerGrp);
-            const isActive = idx === firstAvailableGroupIdx;
+            const isActive = idx === firstAvailableGroupIdx || configuredGroups === 1;
             
             let statusText = '';
             if (isFull) statusText = 'Full';
@@ -227,7 +346,7 @@ const TeamRegistrationScreen = ({ navigation, route }: any) => {
             else statusText = 'Locked';
 
             return (
-              <View key={groupNum} style={[styles.groupLinkCard, { opacity: (isActive || isFull) ? 1 : 0.5, borderColor: isActive ? '#10B981' : '#E5E7EB', flexDirection: 'row', justifyContent: 'space-between' }]}>
+              <View key={groupNum} style={[styles.groupLinkCard, { opacity: (isActive || isFull) ? 1 : 0.6, borderColor: isActive ? '#10B981' : '#E5E7EB', flexDirection: 'row', justifyContent: 'space-between' }]}>
                 <View style={{ flex: 1, alignItems: 'flex-start' }}>
                   <Text style={styles.groupLinkTitle}>Group {groupNum}</Text>
                   <Text style={styles.groupLinkDesc}>{currentGroupJoined} / {teamsPerGrp} Teams Joined</Text>
@@ -236,11 +355,11 @@ const TeamRegistrationScreen = ({ navigation, route }: any) => {
                   style={[
                     styles.joinBtn, 
                     { backgroundColor: isFull ? '#E51025' : (isActive && hasJoinedGroup ? '#10B981' : (isActive ? '#25D366' : '#9CA3AF')) },
-                    (isFull || !isActive || (isActive && hasJoinedGroup)) && { opacity: 0.8 }
+                    (isFull || !isActive || (isActive && hasJoinedGroup)) && { opacity: 0.85 }
                   ]} 
                   disabled={isFull || !isActive || (isActive && hasJoinedGroup)}
                   onPress={() => {
-                                        setHasJoinedGroup(true);
+                    setHasJoinedGroup(true);
                   }}
                 >
                   {!isFull && <Icon name={isActive && hasJoinedGroup ? "checkmark" : "chatbubbles-outline"} size={16} color="#FFF" />}
@@ -251,28 +370,31 @@ const TeamRegistrationScreen = ({ navigation, route }: any) => {
           })}
         </View>
 
+        {/* SUBMIT BUTTON */}
         <TouchableOpacity 
-          style={[styles.submitButton, (!isFormValid || !hasJoinedGroup) && { opacity: 0.5 }]} 
+          style={[styles.submitButton, (!isFormValid || isSubmitting) && { opacity: 0.6 }]} 
           onPress={() => {
             if (!isFormValid) {
-              Alert.alert('Error', 'Please fill all required fields first.');
+              Alert.alert('Error', 'Please fill in Team Name and the first 4 players.');
               return;
             }
             if (!hasJoinedGroup) {
-              Alert.alert('Error', 'Please join the Tournament group first.');
-              return;
+              setHasJoinedGroup(true);
             }
             handleSubmit();
           }} 
-          activeOpacity={0.9}
-          disabled={!isFormValid || !hasJoinedGroup}
+          activeOpacity={0.85}
+          disabled={!isFormValid || isSubmitting}
         >
-          <Text style={styles.submitButtonText}>Submit Registration</Text>
-          <Icon name="arrow-forward-outline" size={20} color="#FFFFFF" style={{ marginLeft: 8 }} />
+          {isSubmitting ? (
+            <ActivityIndicator size="small" color="#FFFFFF" style={{ marginRight: 8 }} />
+          ) : null}
+          <Text style={styles.submitButtonText}>
+            {isSubmitting ? 'Submitting Registration...' : 'Submit Registration'}
+          </Text>
+          {!isSubmitting && <Icon name="arrow-forward-outline" size={20} color="#FFFFFF" style={{ marginLeft: 8 }} />}
         </TouchableOpacity>
       </KeyboardAwareScrollView>
-
-
     </View>
   );
 };
@@ -287,10 +409,6 @@ const styles = StyleSheet.create({
     padding: 15,
     backgroundColor: colors.primary,
     borderBottomWidth: 0,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
     elevation: 4,
     zIndex: 10,
   },
@@ -309,10 +427,10 @@ const styles = StyleSheet.create({
   tournamentInfoCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(220, 38, 38, 0.1)',
-    padding: 15,
+    backgroundColor: 'rgba(220, 38, 38, 0.08)',
+    padding: 14,
     borderRadius: 12,
-    marginBottom: 20,
+    marginBottom: 16,
     borderWidth: 1,
     borderColor: 'rgba(220, 38, 38, 0.2)',
   },
@@ -320,263 +438,290 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.primary,
     fontWeight: 'bold',
-    flex: 1,
+  },
+  tournamentSubText: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
   },
   sectionCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  sectionHeaderTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    marginBottom: 16,
-  },
-  uploadSection: {
-    marginBottom: 20,
-  },
-  uploadBox: {
-    height: 140,
-    backgroundColor: '#F9FAFB',
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: '#E5E7EB',
-    borderStyle: 'dashed',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  iconCircle: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: 'rgba(220, 38, 38, 0.1)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  uploadText: {
-    color: '#4B5563',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  uploadSubText: {
-    color: '#9CA3AF',
-    fontSize: 12,
-    marginTop: 4,
-  },
-  bannerImage: {
-    width: '100%',
-    height: 140,
-    borderRadius: 16,
-  },
-  inputGroup: {
-    marginBottom: 16,
-  },
-  label: {
-    color: '#4B5563',
-    fontSize: 13,
-    marginBottom: 8,
-    fontWeight: '700',
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    paddingHorizontal: 15,
-  },
-  inputIcon: {
-    marginRight: 10,
-  },
-  input: {
-    flex: 1,
-    color: '#1F2937',
-    paddingVertical: 14,
-    fontSize: 15,
-  },
-  playersSectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 10,
-    marginBottom: 15,
-  },
-  addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.primary,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  addButtonText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: 'bold',
-    marginLeft: 6,
-  },
-  playerCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
-    shadowRadius: 8,
+    shadowRadius: 6,
     elevation: 2,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.primary,
+  },
+  sectionHeaderTitle: {
+    fontSize: 17,
+    fontWeight: 'bold',
+    color: '#1F2937',
+  },
+  sectionSubTitle: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  selectedSlotPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E51025',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  selectedSlotPillText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 12,
+  },
+  slotLegendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+    marginBottom: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 5,
+  },
+  legendText: {
+    fontSize: 11,
+    color: '#4B5563',
+    fontWeight: '500',
+  },
+  slotsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'flex-start',
+  },
+  slotBox: {
+    width: '23%',
+    aspectRatio: 1.15,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: '#E5E7EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 4,
+  },
+  slotBoxBooked: {
+    backgroundColor: '#F3F4F6',
+    borderColor: '#E5E7EB',
+    opacity: 0.55,
+  },
+  slotBoxSelected: {
+    backgroundColor: '#E51025',
+    borderColor: '#B91C1C',
+    shadowColor: '#E51025',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  slotNumberText: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#1F2937',
+  },
+  slotNumberTextBooked: {
+    color: '#9CA3AF',
+  },
+  slotNumberTextSelected: {
+    color: '#FFFFFF',
+  },
+  slotAvailableLabel: {
+    fontSize: 9,
+    color: '#10B981',
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  slotBookedLabel: {
+    fontSize: 8,
+    color: '#6B7280',
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  slotSelectedLabel: {
+    fontSize: 9,
+    color: '#FFFFFF',
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  uploadSection: {
+    marginVertical: 14,
+  },
+  uploadBox: {
+    height: 120,
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1.5,
+    borderColor: '#D1D5DB',
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  iconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(220, 38, 38, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  uploadText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  uploadSubText: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    marginTop: 2,
+  },
+  bannerImage: {
+    width: '100%',
+    height: 140,
+    borderRadius: 12,
+  },
+  inputGroup: {
+    marginBottom: 14,
+  },
+  label: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 6,
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+  },
+  inputIcon: {
+    marginRight: 8,
+  },
+  input: {
+    flex: 1,
+    height: 44,
+    color: '#1F2937',
+    fontSize: 14,
+  },
+  playersSectionHeader: {
+    marginBottom: 10,
+    marginTop: 4,
+  },
+  playerCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
   },
   playerCardHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 10,
   },
   playerNumberBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#F3F4F6',
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 10,
+    marginRight: 8,
   },
   playerNumberText: {
-    fontSize: 12,
+    color: '#FFFFFF',
+    fontSize: 11,
     fontWeight: 'bold',
-    color: '#4B5563',
   },
   playerIndex: {
-    color: '#1F2937',
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: 'bold',
-  },
-  removePlayerBtn: {
-    padding: 4,
-    backgroundColor: '#FEF2F2',
-    borderRadius: 20,
+    color: '#1F2937',
   },
   playerInputsRow: {
     flexDirection: 'row',
   },
-  submitButton: {
-    flexDirection: 'row',
-    backgroundColor: colors.primary,
-    paddingVertical: 16,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 10,
-    marginBottom: 40,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  submitButtonText: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-    fontSize: 16,
-    letterSpacing: 0.5,
-  },
   groupsContainer: {
-    marginBottom: 20,
-    marginTop: 10,
+    marginBottom: 16,
+    marginTop: 6,
   },
   groupLinkCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 20,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
     borderWidth: 1,
     borderColor: '#E5E7EB',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 2,
-    alignItems: 'center'
+    alignItems: 'center',
   },
   groupLinkTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: 'bold',
     color: '#1F2937',
-    marginBottom: 8
+    marginBottom: 4,
   },
   groupLinkDesc: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#6B7280',
-    textAlign: 'center',
-    marginBottom: 16,
-    lineHeight: 18
   },
   joinBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#25D366',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 30,
-    gap: 8
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    gap: 6,
   },
   joinBtnText: {
     color: '#FFF',
-    fontSize: 15,
-    fontWeight: 'bold'
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    paddingBottom: 40,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  modalTitle: {
-    color: '#1F2937',
-    fontSize: 18,
+    fontSize: 13,
     fontWeight: 'bold',
   },
-  modalOption: {
+  submitButton: {
+    flexDirection: 'row',
+    backgroundColor: colors.primary,
+    borderRadius: 14,
     paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 8,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  modalOptionText: {
-    color: '#4B5563',
+  submitButtonText: {
+    color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
   },
 });
 
 export default TeamRegistrationScreen;
-
-
-

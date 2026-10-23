@@ -16,6 +16,8 @@ export const API_ENDPOINTS = {
   TOURNAMENTS: `${BASE_URL}tournament/get/`,
   TOURNAMENT_CREATE: `${BASE_URL}tournament/create/`,
   TOURNAMENT_UPDATE: (id: string) => `${BASE_URL}tournament/update/${id}/`,
+  TOURNAMENT_DELETE: (id: string | number) => `${BASE_URL}tournament/delete/${id}/`,
+  TOURNAMENT_DELETE_POST: `${BASE_URL}tournament/delete/`,
   REGISTER_TEAM: (tournamentId: number | string) => `${BASE_URL}tournaments/${tournamentId}/register`,
   GET_REGISTERED_TEAMS: (tournamentId: number | string) => `${BASE_URL}tournaments/${tournamentId}/teams/`,
   MY_MATCHES: `${BASE_URL}my-matches/`,
@@ -32,6 +34,9 @@ export const API_ENDPOINTS = {
   // Community
   COMMUNITY_POSTS: `${BASE_URL}community/posts/`,
   COMMUNITY_GET: `${BASE_URL}community/get/`,
+  COMMUNITY_CREATE: `${BASE_URL}community/create/`,
+  COMMUNITY_UPDATE: `${BASE_URL}community/update/`,
+  COMMUNITY_DELETE: `${BASE_URL}community/delete/`,
   
   // Looking
   LOOKING_FEED: `${BASE_URL}post/list`,
@@ -45,6 +50,8 @@ export const API_ENDPOINTS = {
   PROFILE_CREATE: `${BASE_URL}profile/create`,
   PROFILE_UPDATE: `${BASE_URL}profile/update`,
   PROFILE_FOLLOW: (targetUserId: string | number) => `${BASE_URL}profile/${targetUserId}/follow/`,
+  PROFILE_FOLLOWERS: (userId: string | number) => `${BASE_URL}profile/${userId}/followers/`,
+  PROFILE_FOLLOWING: (userId: string | number) => `${BASE_URL}profile/${userId}/following/`,
 
   // Chatbot (from backend chat app if routed)
   CHATBOT_DATA: `${NGROK_URL}/chat/chatbot-data/`,

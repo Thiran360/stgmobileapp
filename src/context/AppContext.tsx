@@ -80,6 +80,10 @@ export interface Tournament {
   sponsorName?: string;
   manageBy?: string;
   socialMedia?: string[];
+  socialMedia1?: string;
+  socialMedia2?: string;
+  socialMedia3?: string;
+  socialMedia4?: string;
 }
 
 export interface Match {
@@ -122,6 +126,7 @@ interface AppContextType {
   globalTournaments: Tournament[];
   addTournament: (tournament: Tournament) => void;
   updateTournament: (id: string, updatedData: Partial<Tournament>) => void;
+  deleteTournament: (id: string) => void;
   registeredMatches: Match[];
   registerForTournament: (tournament: Tournament) => void;
   addMatch: (match: Match) => void;
@@ -151,6 +156,7 @@ export const AppContext = createContext<AppContextType>({
   globalTournaments: [],
   addTournament: () => {},
   updateTournament: () => {},
+  deleteTournament: () => {},
   registeredMatches: [],
   registerForTournament: () => {},
   addMatch: () => {},
@@ -294,11 +300,15 @@ export const AppContextProvider = ({ children }: { children: ReactNode }) => {
             organiserName: item.organiser_name || item.organiserName || '',
             sponsorName: item.sponsor_name || item.sponsorName || '',
             manageBy: item.manage_by || item.manageBy || '',
+            socialMedia1: item.social_media_1 || item.socialMedia1 || (Array.isArray(item.socialMedia) ? item.socialMedia[0] : '') || '',
+            socialMedia2: item.social_media_2 || item.socialMedia2 || (Array.isArray(item.socialMedia) ? item.socialMedia[1] : '') || '',
+            socialMedia3: item.social_media_3 || item.socialMedia3 || (Array.isArray(item.socialMedia) ? item.socialMedia[2] : '') || '',
+            socialMedia4: item.social_media_4 || item.socialMedia4 || (Array.isArray(item.socialMedia) ? item.socialMedia[3] : '') || '',
             socialMedia: [
-              item.social_media_1 || '',
-              item.social_media_2 || '',
-              item.social_media_3 || '',
-              item.social_media_4 || ''
+              item.social_media_1 || item.socialMedia1 || '',
+              item.social_media_2 || item.socialMedia2 || '',
+              item.social_media_3 || item.socialMedia3 || '',
+              item.social_media_4 || item.socialMedia4 || ''
             ],
             game: item.game || '',
             prize: item.prize || '',
@@ -348,7 +358,11 @@ export const AppContextProvider = ({ children }: { children: ReactNode }) => {
     const loadInitialData = async () => {
       let activeUid: string | null = null;
       try {
-        const storedUserId = await AsyncStorage.getItem('userId');
+        let storedUserId = await AsyncStorage.getItem('userId');
+        if (!storedUserId) {
+          storedUserId = '1';
+          await AsyncStorage.setItem('userId', '1');
+        }
         if (storedUserId) {
           activeUid = storedUserId;
           setCurrentUserId(storedUserId);
@@ -359,6 +373,7 @@ export const AppContextProvider = ({ children }: { children: ReactNode }) => {
       }
       await fetchTournaments();
       await fetchGlobalData(activeUid);
+      await fetchMyMatches();
       setIsAppLoading(false);
     };
     loadInitialData();
@@ -370,6 +385,10 @@ export const AppContextProvider = ({ children }: { children: ReactNode }) => {
 
   const updateTournament = (id: string, updatedData: Partial<Tournament>) => {
     setGlobalTournaments(prev => prev.map(t => t.id === id ? { ...t, ...updatedData } : t));
+  };
+
+  const deleteTournament = (id: string) => {
+    setGlobalTournaments(prev => prev.filter(t => t.id !== id));
   };
 
   const registerForTournament = (tournament: Tournament) => {
@@ -390,10 +409,10 @@ export const AppContextProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const fetchMyMatches = async () => {
-    const uid = currentUserId || userProfile?.id;
-    if (!uid) return;
+    const uid = currentUserId || userProfile?.id || '1';
     try {
-      const matches = await apiService.getMyMatches(uid);
+      const res = await apiService.getMyMatches(uid);
+      const matches = Array.isArray(res) ? res : (res?.data || []);
       if (matches && Array.isArray(matches)) {
         setRegisteredMatches(matches);
       }
@@ -402,15 +421,26 @@ export const AppContextProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const registerTeam = async (data: TeamRegistrationData) => {
+  const registerTeam = async (data: any) => {
+    const uid = (currentUserId || userProfile?.id || '1').toString().replace('user_', '');
+    const cleanTid = String(data.tournamentId || '').replace('tourney_', '');
+    const payload = {
+      ...data,
+      tournamentId: data.tournamentId,
+      user_id: uid,
+      userId: uid
+    };
     // API Call
+    let result = null;
     try {
-        await apiService.registerTeam(data.tournamentId, data);
+      result = await apiService.registerTeam(cleanTid, payload, uid);
     } catch (e) {
-        console.log('Failed to post register team API', e);
+      console.log('Failed to post register team API', e);
     }
     // Update local state anyway
-    setTeamRegistrations(prev => [data, ...prev]);
+    setTeamRegistrations(prev => [payload, ...prev]);
+    await fetchMyMatches();
+    return result;
   };
 
   const addFlyer = (flyer: FlyerData) => {
@@ -422,6 +452,7 @@ export const AppContextProvider = ({ children }: { children: ReactNode }) => {
       globalTournaments,
       addTournament,
       updateTournament,
+      deleteTournament,
       registeredMatches,
       registerForTournament,
       addMatch,

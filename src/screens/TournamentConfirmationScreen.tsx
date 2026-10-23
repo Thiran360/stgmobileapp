@@ -1,6 +1,6 @@
 import React, { useContext, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, Image, Alert, ActivityIndicator } from 'react-native';
-import RNFS from 'react-native-fs';
+import RNFS from '../utils/SafeRNFS';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { colors } from '../theme/colors';
@@ -80,6 +80,7 @@ const TournamentConfirmationScreen = ({ route, navigation }: any) => {
         body: formData,
         headers: {
           'Accept': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
         }
       });
 

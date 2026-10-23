@@ -1,7 +1,7 @@
 import React, { useState, useContext, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, FlatList, KeyboardAvoidingView, Platform, Image, StatusBar, Modal, Alert, ScrollView, Switch, PermissionsAndroid } from 'react-native';
 import AudioRecorderPlayer from 'react-native-audio-recorder-player';
-import RNFS from 'react-native-fs';
+import RNFS from '../utils/SafeRNFS';
 import { AppContext } from '../context/AppContext';
 import { apiService } from '../api/index';
 import { launchImageLibrary, launchCamera } from 'react-native-image-picker';

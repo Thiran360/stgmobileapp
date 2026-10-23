@@ -14,7 +14,7 @@ import {
   Platform,
   Alert,
 } from 'react-native';
-import ImagePicker from 'react-native-image-crop-picker';
+import ImagePicker from '../utils/SafeImagePicker';
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -28,7 +28,7 @@ const LookingScreen = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const { userProfile, currentUserId } = useContext(AppContext);
-  const words = ['Squad', 'Team', 'Managers', 'Organisations'];
+  const words = ['Players', 'Teams', 'Organisations'];
   const [wordIndex, setWordIndex] = useState(0);
   const [activeChip, setActiveChip] = useState('All');
   const [isPostModalVisible, setPostModalVisible] = useState(false);
@@ -43,7 +43,7 @@ const LookingScreen = () => {
   const [bannerImage, setBannerImage] = useState<string | null>(null);
   const handleImagePick = async () => {
     try {
-      const ImagePicker = require('react-native-image-crop-picker').default;
+      const ImagePicker = require('../utils/SafeImagePicker').default;
       const image = await ImagePicker.openPicker({
         width: 400,
         height: 400,
@@ -55,10 +55,10 @@ const LookingScreen = () => {
     }
   };
   const chips = [
-    { id: 'All', icon: null },
-    { id: 'Team', icon: 'account-group' },
-    { id: 'Players', icon: 'account' },
-    { id: 'Organisation', icon: 'domain' },
+    { id: 'All', label: 'All', icon: null },
+    { id: 'Players', label: 'Players', icon: 'account' },
+    { id: 'Team', label: 'Teams', icon: 'account-group' },
+    { id: 'Organisation', label: 'Organisation', icon: 'domain' },
   ];
   useEffect(() => {
     const interval = setInterval(() => {
@@ -204,46 +204,49 @@ const LookingScreen = () => {
         endpoint = require('../api/config').API_ENDPOINTS.LOOKING_UPDATE;
         payload.post_id = currentPost.id;
       }
-      const f = new FormData();
-      Object.keys(payload).forEach(k => {
-        const val = payload[k];
-        f.append(
-          k,
-          typeof val === 'object' ? JSON.stringify(val) : String(val),
-        );
-      });
-      if (bannerImage) {
-        if (
-          bannerImage.startsWith('file://') ||
-          bannerImage.startsWith('content://')
-        ) {
-          f.append('banner_image', {
-            uri: bannerImage,
-            name: (activeChip === 'Players' ? 'player_' : 'logo_') + Date.now() + '.jpg',
-            type: 'image/jpeg',
-          } as any);
-        } else {
-          f.append('banner_image', bannerImage);
+      const hasLocalImage = Boolean(
+        bannerImage &&
+        typeof bannerImage === 'string' &&
+        (bannerImage.startsWith('file://') || bannerImage.startsWith('content://'))
+      );
+
+      let res;
+      if (hasLocalImage) {
+        const f = new FormData();
+        Object.keys(payload).forEach(k => {
+          const val = payload[k];
+          f.append(
+            k,
+            typeof val === 'object' ? JSON.stringify(val) : String(val),
+          );
+        });
+        f.append('banner_image', {
+          uri: bannerImage,
+          name: (activeChip === 'Players' ? 'player_' : 'logo_') + Date.now() + '.jpg',
+          type: 'image/jpeg',
+        } as any);
+        res = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            'ngrok-skip-browser-warning': 'true',
+          },
+          body: f,
+        });
+      } else {
+        if (bannerImage) {
+          payload.banner_image = bannerImage;
         }
+        res = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'ngrok-skip-browser-warning': 'true',
+          },
+          body: JSON.stringify(payload),
+        });
       }
-      // Set creator_avatar to empty string as requested for these types
-      if (activeChip === 'Team' || activeChip === 'Organisation') {
-        f.append('creator_avatar', '');
-      } else if (userProfile?.profilePicture) {
-        if (
-          userProfile.profilePicture.startsWith('file://') ||
-          userProfile.profilePicture.startsWith('content://')
-        ) {
-          f.append('creator_avatar', {
-            uri: userProfile.profilePicture,
-            name: 'avatar_' + Date.now() + '.jpg',
-            type: 'image/jpeg',
-          } as any);
-        } else {
-          f.append('creator_avatar', userProfile.profilePicture);
-        }
-      }
-      const res = await fetch(endpoint, { method: 'POST', body: f });
       const data = await res.json().catch(() => null);
       if (res.ok && data?.status !== false) {
         const wasEditing = isEditingPost;
@@ -271,6 +274,12 @@ const LookingScreen = () => {
         `${
           require('../api/config').API_ENDPOINTS.LOOKING_FEED
         }${categoryParam}`,
+        {
+          headers: {
+            'Accept': 'application/json',
+            'ngrok-skip-browser-warning': 'true',
+          },
+        }
       );
       const feedData = await feedRes.json();
       const parseP = (p: any) => {
@@ -291,8 +300,15 @@ const LookingScreen = () => {
       }
       const uid = userProfile?.id || currentUserId;
       if (uid) {
+        const cleanUid = String(uid).replace('user_', '');
         const meRes = await fetch(
-          `${require('../api/config').API_ENDPOINTS.LOOKING_ME}?user_id=${uid}`,
+          `${require('../api/config').API_ENDPOINTS.LOOKING_ME}?user_id=${cleanUid}`,
+          {
+            headers: {
+              'Accept': 'application/json',
+              'ngrok-skip-browser-warning': 'true',
+            },
+          }
         );
         if (!meRes.ok) {
           setMyPost(null);
@@ -412,7 +428,7 @@ const LookingScreen = () => {
                         : styles.chipTextInactive,
                     ]}
                   >
-                    {chip.id}
+                    {(chip as any).label || chip.id}
                   </Text>
                 </TouchableOpacity>
               );

@@ -4,7 +4,11 @@ const fetchWithTimeout = async (url: string, options: any = {}, timeoutMs = 1500
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(url, { ...options, signal: controller.signal });
+    const headers = {
+      'ngrok-skip-browser-warning': 'true',
+      ...(options.headers || {})
+    };
+    const response = await fetch(url, { ...options, headers, signal: controller.signal });
     clearTimeout(id);
     return response;
   } catch (error) {
@@ -52,6 +56,22 @@ export const apiService = {
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify({ action, user_id: followerId })
     });
+    return res.json();
+  },
+  getFollowers: async (userId: string | number, viewerId?: string | number) => {
+    let url = API_ENDPOINTS.PROFILE_FOLLOWERS(userId);
+    if (viewerId) {
+      url += `?viewer_id=${encodeURIComponent(String(viewerId))}`;
+    }
+    const res = await fetchWithTimeout(url);
+    return res.json();
+  },
+  getFollowing: async (userId: string | number, viewerId?: string | number) => {
+    let url = API_ENDPOINTS.PROFILE_FOLLOWING(userId);
+    if (viewerId) {
+      url += `?viewer_id=${encodeURIComponent(String(viewerId))}`;
+    }
+    const res = await fetchWithTimeout(url);
     return res.json();
   },
 
@@ -118,6 +138,23 @@ export const apiService = {
     });
     return res.json();
   },
+  updateCommunityPost: async (postData: any) => {
+    const isFormData = postData instanceof FormData;
+    const res = await fetchWithTimeout(API_ENDPOINTS.COMMUNITY_UPDATE, {
+      method: 'POST',
+      headers: isFormData ? { 'Accept': 'application/json' } : { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: isFormData ? postData : JSON.stringify(postData)
+    });
+    return res.json();
+  },
+  deleteCommunityPost: async (postId: string | number) => {
+    const res = await fetchWithTimeout(API_ENDPOINTS.COMMUNITY_DELETE, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ post_id: postId })
+    });
+    return res.json();
+  },
 
   // Tournaments
   createTournament: async (data: any) => {
@@ -128,6 +165,19 @@ export const apiService = {
       body: isFormData ? data : JSON.stringify(data)
     });
     return res.json();
+  },
+  deleteTournament: async (tournamentId: number | string) => {
+    try {
+      const res = await fetchWithTimeout(API_ENDPOINTS.TOURNAMENT_DELETE_POST, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ tournament_id: tournamentId })
+      });
+      return await res.json();
+    } catch (e) {
+      console.log('Error deleting tournament:', e);
+      return { status: false, message: 'Network error deleting tournament' };
+    }
   },
   registerTeam: async (tournamentId: number | string, teamData: any, userId?: string | number) => {
     let url = API_ENDPOINTS.REGISTER_TEAM(tournamentId);

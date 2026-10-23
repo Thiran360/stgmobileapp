@@ -1,4 +1,4 @@
-﻿import React, { useContext, useState, useRef, useEffect } from 'react';
+import React, { useContext, useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Modal, Alert, Dimensions, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
@@ -188,7 +188,7 @@ const CustomDrawer = () => {
               <DrawerItem icon="people-outline" label="Community" onPress={() => { setIsDrawerOpen(false); navigation.navigate('MainTabs', { screen: 'Community' }); }} />
               <DrawerItem icon="bar-chart-outline" label="My Performance" onPress={() => { setIsDrawerOpen(false); Alert.alert('Coming Soon', 'This feature will be available shortly!'); }} />
                 <DrawerItem icon="podium-outline" label="Leaderboards" onPress={() => { setIsDrawerOpen(false); Alert.alert('Coming Soon', 'This feature will be available shortly!'); }} />
-                <DrawerItem icon="cart-outline" label="Store" onPress={() => { setIsDrawerOpen(false); Alert.alert('Coming Soon', 'Our UPMI Store will be launching shortly!'); }} />
+                <DrawerItem icon="cart-outline" label="Store" onPress={() => { setIsDrawerOpen(false); navigation.navigate('MainTabs', { screen: 'Store' }); }} />
 
               <View style={styles.menuDivider} />
               

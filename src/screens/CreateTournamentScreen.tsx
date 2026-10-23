@@ -1,11 +1,11 @@
-﻿import React, { useState, useEffect, useRef, useContext } from 'react';
+import React, { useState, useEffect, useRef, useContext } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Modal, Image, Alert, Platform, Animated, StatusBar, KeyboardAvoidingView } from 'react-native';
-import Share from 'react-native-share';
+import Share from '../utils/SafeShare';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/Ionicons';
-import ImagePicker from 'react-native-image-crop-picker';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import ImagePicker from '../utils/SafeImagePicker';
+import DateTimePicker from '../components/SafeDateTimePicker';
 import { colors } from '../theme/colors';
 import { AppContext } from '../context/AppContext';
 import { Calendar } from 'react-native-calendars';

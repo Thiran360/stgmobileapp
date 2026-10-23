@@ -1,4 +1,5 @@
-﻿import React, { useState, useContext } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
+import { apiService } from '../api/index';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, Image, Platform, ActivityIndicator, Alert } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -11,32 +12,93 @@ import { AppContext } from '../context/AppContext';
 const CommunityAddScreen = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const { category } = route.params || { category: 'Community' };
+  const { category, isEdit, post: existingPost } = route.params || { category: 'Community', isEdit: false, post: null };
   const { userProfile } = useContext(AppContext);
 
-  const [logo, setLogo] = useState<string | null>(null);
-  const [username, setUsername] = useState((userProfile?.username ? (userProfile.username.startsWith('@') ? userProfile.username : '@'+userProfile.username) : userProfile?.fullName) || 'Guest');
-  const [name, setName] = useState('');
-  const [orgName, setOrgName] = useState('');
-  const [ownerName, setOwnerName] = useState('');
-  const [experience, setExperience] = useState('');
-  const [since, setSince] = useState('');
-  const [description, setDescription] = useState('');
-  const [previousWork, setPreviousWork] = useState('');
-  const [achievements, setAchievements] = useState('');
-  const [overallPlayers, setOverallPlayers] = useState('');
+  const [logo, setLogo] = useState<string | null>(existingPost?.logo || null);
+  const [username, setUsername] = useState(
+    existingPost?.postedBy ||
+    existingPost?.posted_by ||
+    (userProfile?.username ? (userProfile.username.startsWith('@') ? userProfile.username : '@' + userProfile.username) : userProfile?.fullName) ||
+    'Guest'
+  );
+  const [name, setName] = useState(existingPost?.name || '');
+  const [orgName, setOrgName] = useState(existingPost?.orgName || existingPost?.org_name || '');
+  const [ownerName, setOwnerName] = useState(existingPost?.ownerName || existingPost?.owner_name || '');
+  const [experience, setExperience] = useState(existingPost?.experience || existingPost?.lanExperience || '');
+  const [since, setSince] = useState(existingPost?.since || '');
+  const [description, setDescription] = useState(existingPost?.description || '');
+  const [previousWork, setPreviousWork] = useState(existingPost?.previousWork || existingPost?.previous_work || '');
+  const [achievements, setAchievements] = useState(existingPost?.achievements || '');
+  const [overallPlayers, setOverallPlayers] = useState(existingPost?.overallPlayers || existingPost?.overall_players || '');
   
   // Social
-  const [youtube, setYoutube] = useState('');
-  const [instagram, setInstagram] = useState('');
-  const [discord, setDiscord] = useState('');
-  const [website, setWebsite] = useState('');
+  const [youtube, setYoutube] = useState(existingPost?.youtube || '');
+  const [instagram, setInstagram] = useState(existingPost?.instagram || '');
+  const [discord, setDiscord] = useState(existingPost?.discord || '');
+  const [website, setWebsite] = useState(existingPost?.website || '');
   
-  const [ownerYoutube, setOwnerYoutube] = useState('');
-  const [ownerInstagram, setOwnerInstagram] = useState('');
-  const [ownerDiscord, setOwnerDiscord] = useState('');
-  const [ownerWebsite, setOwnerWebsite] = useState('');
+  const [ownerYoutube, setOwnerYoutube] = useState(existingPost?.ownerYoutube || existingPost?.owner_youtube || '');
+  const [ownerInstagram, setOwnerInstagram] = useState(existingPost?.ownerInstagram || existingPost?.owner_instagram || '');
+  const [ownerDiscord, setOwnerDiscord] = useState(existingPost?.ownerDiscord || existingPost?.owner_discord || '');
+  const [ownerWebsite, setOwnerWebsite] = useState(existingPost?.ownerWebsite || existingPost?.owner_website || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [targetPostId, setTargetPostId] = useState<string | null>(existingPost?.id || null);
+  const effectiveIsEdit = isEdit || !!targetPostId;
+
+  useEffect(() => {
+    if (!isEdit && !targetPostId) {
+      const checkExisting = async () => {
+        try {
+          const apiPosts = await apiService.getCommunityPosts(category);
+          const dataList = Array.isArray(apiPosts) ? apiPosts : (apiPosts?.data || []);
+          if (Array.isArray(dataList)) {
+            const myUid = (userProfile?.id || '').toString().replace('user_', '').trim();
+            const myUser = (userProfile?.username || '').toString().toLowerCase().replace('@', '').trim();
+            const myName = (userProfile?.fullName || '').toString().toLowerCase().trim();
+
+            const found = dataList.find((p: any) => {
+              const pUid = p.user_id ? String(p.user_id).replace('user_', '').trim() : '';
+              if (pUid && myUid && pUid === myUid) return true;
+              const pUser = (p.postedBy || p.posted_by || '').toString().toLowerCase().replace('@', '').trim();
+              if (pUser && (pUser === myUser || pUser === myName)) return true;
+              return false;
+            });
+
+            if (found) {
+              Alert.alert(
+                'Existing Post Found',
+                'You already have a post in this category. You can only edit your existing post.',
+                [{ text: 'OK' }]
+              );
+              setTargetPostId(found.id);
+              if (found.logo) setLogo(found.logo);
+              if (found.name) setName(found.name);
+              if (found.orgName || found.org_name) setOrgName(found.orgName || found.org_name);
+              if (found.ownerName || found.owner_name) setOwnerName(found.ownerName || found.owner_name);
+              if (found.experience || found.lanExperience) setExperience(found.experience || found.lanExperience);
+              if (found.since) setSince(found.since);
+              if (found.description) setDescription(found.description);
+              if (found.previousWork || found.previous_work) setPreviousWork(found.previousWork || found.previous_work);
+              if (found.achievements) setAchievements(found.achievements);
+              if (found.overallPlayers || found.overall_players) setOverallPlayers(found.overallPlayers || found.overall_players);
+              if (found.youtube) setYoutube(found.youtube);
+              if (found.instagram) setInstagram(found.instagram);
+              if (found.discord) setDiscord(found.discord);
+              if (found.website) setWebsite(found.website);
+              if (found.ownerYoutube || found.owner_youtube) setOwnerYoutube(found.ownerYoutube || found.owner_youtube);
+              if (found.ownerInstagram || found.owner_instagram) setOwnerInstagram(found.ownerInstagram || found.owner_instagram);
+              if (found.ownerDiscord || found.owner_discord) setOwnerDiscord(found.ownerDiscord || found.owner_discord);
+              if (found.ownerWebsite || found.owner_website) setOwnerWebsite(found.ownerWebsite || found.owner_website);
+            }
+          }
+        } catch (e) {
+          console.log('Error verifying existing post:', e);
+        }
+      };
+      checkExisting();
+    }
+  }, [category, isEdit]);
 
   const isEsports = category === 'Esports';
   const isAcademy = category === 'Academy';
@@ -54,9 +116,16 @@ const CommunityAddScreen = () => {
     setIsSubmitting(true);
     
     try {
-      const endpoint = require('../api/config').API_ENDPOINTS.COMMUNITY_POSTS;
+      const { API_ENDPOINTS } = require('../api/config');
+      const endpoint = effectiveIsEdit ? API_ENDPOINTS.COMMUNITY_UPDATE : API_ENDPOINTS.COMMUNITY_POSTS;
       const f = new FormData();
       
+      const pid = targetPostId || existingPost?.id;
+      if (effectiveIsEdit && pid) {
+        f.append('post_id', pid);
+      }
+      const uid = (userProfile?.id || '').toString().replace('user_', '') || '1';
+      f.append('user_id', uid);
       f.append('category', category);
       f.append('posted_by', username || '');
       
@@ -95,11 +164,16 @@ const CommunityAddScreen = () => {
 
       const res = await fetch(endpoint, {
         method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
         body: f
       });
       const data = await res.json();
       
       if (data?.status !== false) {
+        Alert.alert('Success', effectiveIsEdit ? 'Post updated successfully!' : 'Post created successfully!');
         navigation.dispatch((state: any) => {
           const routes = state.routes.filter((r: any) => r.name !== 'CommunityAddScreen');
           const listRouteIndex = routes.findIndex((r: any) => r.name === 'CommunityListScreen');
@@ -146,12 +220,12 @@ const CommunityAddScreen = () => {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color={colors.textBlack} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>New Post in {category}</Text>
+        <Text style={styles.headerTitle}>{effectiveIsEdit ? 'Edit Post' : `New Post in ${category}`}</Text>
         <TouchableOpacity onPress={handlePost}>
           {isSubmitting ? (
             <ActivityIndicator size="small" color="#E51025" />
           ) : (
-            <Text style={styles.headerPostText}>Post</Text>
+            <Text style={styles.headerPostText}>{effectiveIsEdit ? 'Update' : 'Post'}</Text>
           )}
         </TouchableOpacity>
       </View>
